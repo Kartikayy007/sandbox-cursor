@@ -23,8 +23,8 @@ Using this setup, you can work with Cursor in an isolated environment while stil
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/cursor-docker.git
-cd cursor-docker
+git clone https://github.com/iiviie/sandbox-cursor.git
+cd sandbox-cursor
 ```
 
 ### 2. Download Cursor AppImage

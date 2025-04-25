@@ -9,9 +9,6 @@ RUN apt update && apt install -y \
     libxkbcommon0 \
     libnss3 \
     libx11-6 \
-    pciutils\
-    libpci3\
-    libpci-dev\
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \
@@ -52,9 +49,6 @@ RUN apt update && apt install -y \
     python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
-RUN apt update
-RUN apt install -y sudo
-
 # Install Firefox directly from Mozilla PPA instead of snap
 RUN add-apt-repository ppa:mozillateam/ppa -y && \
     echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' > /etc/apt/preferences.d/mozilla-firefox && \
@@ -72,16 +66,22 @@ RUN useradd -u 1000 -ms /bin/bash cursoruser
 
 # Add the user to the sudo group and configure passwordless sudo
 RUN usermod -aG sudo cursoruser && \
-    echo "cursoruser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/cursoruser
+    echo "cursoruser ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/cursoruser && \
+    chmod 0440 /etc/sudoers.d/cursoruser
 
 # Create necessary directories and set permissions
-RUN mkdir -p /home/cursoruser/.config/Cursor && \
+RUN mkdir -p /home/cursoruser/.cursor && \
+    mkdir -p /home/cursoruser/.cursor/extensions && \
+    mkdir -p /home/cursoruser/.config/Cursor && \
     mkdir -p /home/cursoruser/.config/Cursor/Code\ Cache/js && \
     mkdir -p /home/cursoruser/.config/Cursor/Code\ Cache/wasm && \
     mkdir -p /home/cursoruser/.config/Cursor/User/globalStorage && \
     mkdir -p /home/cursoruser/.mozilla/firefox && \
     chown -R cursoruser:cursoruser /home/cursoruser/.config && \
-    chown -R cursoruser:cursoruser /home/cursoruser/.mozilla
+    chown -R cursoruser:cursoruser /home/cursoruser/.cursor && \
+    chown -R cursoruser:cursoruser /home/cursoruser/.mozilla && \
+    chmod -R 755 /home/cursoruser/.cursor && \
+    chmod -R 755 /home/cursoruser/.config/Cursor
 
 # Set work directory for that user
 USER cursoruser
@@ -94,21 +94,24 @@ RUN echo 'export PS1="\[\033[01;32m\]\u@cursor-container\[\033[00m\]:\[\033[01;3
 COPY --chown=cursoruser:cursoruser Cursor.AppImage ./Cursor.AppImage
 RUN chmod +x Cursor.AppImage
 
-# Create a wrapper script that launches both Firefox and Cursor
+# Create optimized startup script
 RUN echo '#!/bin/bash\n\
-# Start Firefox in the background to be ready for auth\n\
-/usr/bin/firefox --new-instance &\n\
-FIREFOX_PID=$!\n\
-echo "Started Firefox with PID: $FIREFOX_PID"\n\
+# Ensure permissions are correct at startup\n\
+sudo chown -R cursoruser:cursoruser /home/cursoruser/.cursor\n\
+sudo chown -R cursoruser:cursoruser /home/cursoruser/.config/Cursor\n\
+sudo chmod -R 755 /home/cursoruser/.cursor\n\
+sudo chmod -R 755 /home/cursoruser/.config/Cursor\n\
 \n\
-# Wait a bit for Firefox to initialize\n\
-sleep 3\n\
+# Function to start Firefox when needed\n\
+start_firefox() {\n\
+  echo "Starting Firefox for authentication..."\n\
+  /usr/bin/firefox --new-instance --private-window & \n\
+  return $!\n\
+}\n\
 \n\
 # Start Cursor\n\
+echo "Starting Cursor..."\n\
 ./Cursor.AppImage --no-sandbox\n\
-\n\
-# Make sure to kill Firefox when Cursor exits\n\
-kill $FIREFOX_PID 2>/dev/null\n\
 ' > /home/cursoruser/start-cursor.sh && chmod +x /home/cursoruser/start-cursor.sh
 
 # Setup environment variables for browser handling
@@ -118,5 +121,3 @@ ENV ELECTRON_ENABLE_LOGGING=1
 
 # Default command - use our wrapper script
 CMD ["/home/cursoruser/start-cursor.sh"]
-
-

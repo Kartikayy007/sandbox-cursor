@@ -9,6 +9,9 @@ RUN apt update && apt install -y \
     libxkbcommon0 \
     libnss3 \
     libx11-6 \
+    pciutils\
+    libpci3\
+    libpci-dev\
     libxcomposite1 \
     libxdamage1 \
     libxrandr2 \

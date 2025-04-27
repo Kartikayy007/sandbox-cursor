@@ -52,9 +52,9 @@ RUN apt-get update && apt-get install -y locales && \
     update-locale LANG=en_US.UTF-8 && \
     rm -rf /var/lib/apt/lists/*
 
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
 
 # Create a non-root user
 RUN useradd -u 1000 -ms /bin/bash cursoruser
@@ -85,9 +85,9 @@ WORKDIR /home/cursoruser
 # Setup custom prompt
 RUN echo 'export PS1="\[\033[01;32m\]\u@cursor-container-mac\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/cursoruser/.bashrc
 
-# Download Cursor directly during build
-RUN wget -q "https://download.cursor.sh/linux/appImage" -O Cursor.AppImage && \
-    chmod +x Cursor.AppImage
+# Copy Cursor.AppImage with correct permissions
+COPY --chown=cursoruser:cursoruser Cursor.AppImage ./Cursor.AppImage
+RUN chmod +x Cursor.AppImage
 
 # Create startup script
 RUN echo '#!/bin/bash\n\

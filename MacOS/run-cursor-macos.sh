@@ -9,6 +9,14 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# Check if Cursor.AppImage exists
+if [ ! -f "Cursor.AppImage" ]; then
+  echo "Cursor.AppImage not found in the current directory."
+  echo "Please download Cursor AppImage from https://cursor.sh/"
+  echo "and place it in the same directory as this script."
+  exit 1
+fi
+
 # Check if XQuartz is installed
 if ! command -v xquartz &> /dev/null; then
     echo "XQuartz is not installed. Please install it first:"
@@ -25,12 +33,20 @@ if ! pgrep -x "Xquartz" > /dev/null; then
     sleep 5
 fi
 
+# Configure XQuartz to allow connections
+echo "Configuring XQuartz..."
+defaults write org.xquartz.X11 nolisten_tcp 0
+defaults write org.xquartz.X11 app_to_run /usr/bin/true
+defaults write org.xquartz.X11 enable_iglx -bool true
+
+# Restart XQuartz to apply settings
+echo "Restarting XQuartz to apply settings..."
+killall Xquartz 2>/dev/null || true
+open -a XQuartz
+sleep 3
+
 # Allow connections from localhost to XQuartz
 xhost +localhost
-
-# Attempt to pull the image directly to address registry issues
-echo "Pulling Ubuntu image..."
-docker pull ubuntu:22.04 || echo "Warning: Unable to pull Ubuntu image, continuing with build..."
 
 # Build the Docker image
 echo "Building Cursor container image..."
@@ -38,16 +54,8 @@ docker build -t cursor-firefox-mac -f Dockerfile.mac .
 
 # Check if build was successful
 if [ $? -ne 0 ]; then
-    echo "Build failed. Trying with alternative approach..."
-    # If the build failed, try to use a local image
-    echo "FROM ubuntu:latest" > Dockerfile.mac.alt
-    cat Dockerfile.mac | tail -n +2 >> Dockerfile.mac.alt
-    docker build -t cursor-firefox-mac -f Dockerfile.mac.alt .
-    
-    if [ $? -ne 0 ]; then
-        echo "Alternative build also failed. Please check Docker configuration."
-        exit 1
-    fi
+    echo "Build failed. Please check the errors above."
+    exit 1
 fi
 
 # Initialize Docker volumes
@@ -71,14 +79,6 @@ fi
 echo "Using IP address: $IP for display forwarding"
 
 # Make sure XQuartz allows connections from Docker
-defaults write org.xquartz.X11 nolisten_tcp 0
-defaults write org.xquartz.X11 app_to_run /usr/bin/true
-defaults write org.xquartz.X11 enable_iglx -bool true
-
-# Restart XQuartz if needed
-killall Xquartz 2>/dev/null || true
-open -a XQuartz
-sleep 3
 xhost + $IP
 
 # Run using XQuartz display forwarding with proper volume mounts

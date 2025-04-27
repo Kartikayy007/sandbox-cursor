@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     libfuse2 \
+    dbus \
  && rm -rf /var/lib/apt/lists/*
 
 # Install Firefox
@@ -111,6 +112,13 @@ start_firefox() {\n\
   /usr/bin/firefox --new-instance --private-window & \n\
   return $!\n\
 }\n\
+\n\
+# Start DBus if not running\n\
+if [ ! -e /var/run/dbus/system_bus_socket ]; then\n\
+  echo "Starting system DBus..."\n\
+  sudo mkdir -p /var/run/dbus\n\
+  sudo dbus-daemon --system --fork\n\
+fi\n\
 \n\
 # Start Cursor (extracted version)\n\
 echo "Starting Cursor..."\n\

@@ -25,11 +25,24 @@ if ! [ -d "/Applications/Utilities/XQuartz.app" ]; then
     exit 1
 fi
 
-# Start XQuartz using open command
-echo "Starting XQuartz..."
-open -a XQuartz
-# Wait for XQuartz to start
-sleep 3
+# Check if socat is installed
+if ! command -v socat &> /dev/null; then
+    echo "socat is not installed. Installing with Homebrew..."
+    brew install socat
+fi
+
+# Ask user to start XQuartz manually
+echo "Please start XQuartz manually before continuing."
+echo "You can do this by opening /Applications/Utilities/XQuartz.app"
+echo "Then in XQuartz preferences → Security tab, check 'Allow connections from network clients'"
+echo "Press Enter once XQuartz is running and configured..."
+read -p ""
+
+# Check if XQuartz is running
+if ! pgrep -x "Xquartz" > /dev/null && ! pgrep -x "X11" > /dev/null; then
+    echo "XQuartz doesn't appear to be running. Please make sure it's running and try again."
+    exit 1
+fi
 
 # Configure XQuartz to allow connections
 echo "Configuring XQuartz..."
@@ -37,14 +50,19 @@ defaults write org.xquartz.X11 nolisten_tcp 0
 defaults write org.xquartz.X11 app_to_run /usr/bin/true
 defaults write org.xquartz.X11 enable_iglx -bool true
 
-# Check if XQuartz is running
-if ! pgrep -x "XQuartz" > /dev/null; then
-    echo "XQuartz failed to start. Please start it manually and try again."
-    exit 1
-fi
+# Allow connections to X server
+xhost + 2>/dev/null || echo "Warning: xhost command failed. XQuartz may not be configured correctly."
 
-# Allow connections from localhost to XQuartz
-xhost +localhost
+# Kill any existing socat processes
+pkill -f "socat TCP-LISTEN:6000" &>/dev/null || true
+
+# Set up socat to forward X11 traffic
+echo "Setting up X11 forwarding via socat..."
+socat TCP-LISTEN:6000,reuseaddr,fork UNIX-CLIENT:\"$DISPLAY\" &
+SOCAT_PID=$!
+
+# Ensure socat is killed when the script exits
+trap "kill $SOCAT_PID 2>/dev/null || true; xhost - 2>/dev/null || true; echo 'Cleaned up X11 forwarding.'" EXIT
 
 # Build the Docker image
 echo "Building Cursor container image..."
@@ -62,30 +80,12 @@ docker volume create cursor_app_data_mac
 docker volume create cursor_config_data_mac
 docker volume create firefox_profile_data_mac
 
-# Get IP address for display forwarding
-IP=$(ifconfig en0 | grep inet | awk '$1=="inet" {print $2}')
-if [ -z "$IP" ]; then
-    # Try alternative interface if en0 doesn't work
-    IP=$(ifconfig en1 | grep inet | awk '$1=="inet" {print $2}')
-fi
-
-if [ -z "$IP" ]; then
-    # Last resort, try localhost
-    IP="127.0.0.1"
-    echo "Could not determine network IP address, using localhost (127.0.0.1)"
-else
-    echo "Using IP address: $IP for display forwarding"
-fi
-
-# Make sure XQuartz allows connections from Docker
-xhost + $IP
-
-# Run using XQuartz display forwarding with proper volume mounts
+# Run using socat for display forwarding
 echo "Starting Cursor container..."
 docker run -it --rm \
   --name cursor-instance-mac \
   --hostname cursor-container-mac \
-  -e DISPLAY=$IP:0 \
+  -e DISPLAY=host.docker.internal:0 \
   -v cursor_app_data_mac:/home/cursoruser/.cursor \
   -v cursor_config_data_mac:/home/cursoruser/.config/Cursor \
   -v firefox_profile_data_mac:/home/cursoruser/.mozilla/firefox \
@@ -94,8 +94,5 @@ docker run -it --rm \
   -v ~/Downloads:/home/cursoruser/host-downloads \
   --cap-add SYS_ADMIN \
   cursor-firefox-mac
-
-# Restrict access when done
-xhost -localhost
 
 echo "Cursor container has been shut down."

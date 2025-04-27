@@ -91,13 +91,6 @@ RUN echo 'export PS1="\[\033[01;32m\]\u@cursor-container-mac\[\033[00m\]:\[\033[
 COPY --chown=cursoruser:cursoruser Cursor.AppImage ./Cursor.AppImage
 RUN chmod +x Cursor.AppImage
 
-# Extract AppImage instead of running it directly
-RUN mkdir -p ./CursorExtracted && \
-    ./Cursor.AppImage --appimage-extract && \
-    mv squashfs-root/* ./CursorExtracted/ && \
-    rm -rf squashfs-root && \
-    chmod +x ./CursorExtracted/AppRun
-
 # Create startup script
 RUN echo '#!/bin/bash\n\
 # Ensure permissions are correct at startup\n\
@@ -120,7 +113,15 @@ if [ ! -e /var/run/dbus/system_bus_socket ]; then\n\
   sudo dbus-daemon --system --fork\n\
 fi\n\
 \n\
-# Start Cursor (extracted version)\n\
+# Extract AppImage at runtime\n\
+echo "Extracting Cursor AppImage..."\n\
+mkdir -p ./CursorExtracted\n\
+./Cursor.AppImage --appimage-extract\n\
+mv squashfs-root/* ./CursorExtracted/\n\
+rm -rf squashfs-root\n\
+chmod +x ./CursorExtracted/AppRun\n\
+\n\
+# Start Cursor\n\
 echo "Starting Cursor..."\n\
 cd ./CursorExtracted && ./AppRun --no-sandbox\n\
 ' > /home/cursoruser/start-cursor.sh && chmod +x /home/cursoruser/start-cursor.sh

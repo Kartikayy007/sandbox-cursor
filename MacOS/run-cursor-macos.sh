@@ -18,20 +18,18 @@ if [ ! -f "Cursor.AppImage" ]; then
 fi
 
 # Check if XQuartz is installed
-if ! command -v xquartz &> /dev/null; then
+if ! [ -d "/Applications/Utilities/XQuartz.app" ]; then
     echo "XQuartz is not installed. Please install it first:"
     echo "brew install --cask xquartz"
     echo "Then restart your computer before running this script again."
     exit 1
 fi
 
-# Start XQuartz if not already running
-if ! pgrep -x "Xquartz" > /dev/null; then
-    echo "Starting XQuartz..."
-    open -a XQuartz
-    # Wait for XQuartz to start
-    sleep 5
-fi
+# Start XQuartz using open command
+echo "Starting XQuartz..."
+open -a XQuartz
+# Wait for XQuartz to start
+sleep 3
 
 # Configure XQuartz to allow connections
 echo "Configuring XQuartz..."
@@ -39,11 +37,11 @@ defaults write org.xquartz.X11 nolisten_tcp 0
 defaults write org.xquartz.X11 app_to_run /usr/bin/true
 defaults write org.xquartz.X11 enable_iglx -bool true
 
-# Restart XQuartz to apply settings
-echo "Restarting XQuartz to apply settings..."
-killall Xquartz 2>/dev/null || true
-open -a XQuartz
-sleep 3
+# Check if XQuartz is running
+if ! pgrep -x "XQuartz" > /dev/null; then
+    echo "XQuartz failed to start. Please start it manually and try again."
+    exit 1
+fi
 
 # Allow connections from localhost to XQuartz
 xhost +localhost
@@ -72,11 +70,12 @@ if [ -z "$IP" ]; then
 fi
 
 if [ -z "$IP" ]; then
-    echo "Could not determine IP address. Please check your network connection."
-    exit 1
+    # Last resort, try localhost
+    IP="127.0.0.1"
+    echo "Could not determine network IP address, using localhost (127.0.0.1)"
+else
+    echo "Using IP address: $IP for display forwarding"
 fi
-
-echo "Using IP address: $IP for display forwarding"
 
 # Make sure XQuartz allows connections from Docker
 xhost + $IP

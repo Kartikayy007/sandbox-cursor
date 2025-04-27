@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install dependencies and useful tools
-RUN apt update && apt install -y \
+RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libgtk-3-0 \
     libxkbcommon0 \
@@ -23,18 +23,11 @@ RUN apt update && apt install -y \
     ca-certificates \
     fuse \
     xdg-utils \
-    libwayland-client0 \
-    libwayland-cursor0 \
-    libwayland-egl1 \
-    libwayland-server0 \
-    libdrm2 \
     mesa-utils \
     dbus-x11 \
     libdbus-1-3 \
     xvfb \
     x11-xserver-utils \
-    pulseaudio \
-    locales \
     software-properties-common \
     gnupg \
     curl \
@@ -49,14 +42,16 @@ RUN apt update && apt install -y \
     python3-pip \
  && rm -rf /var/lib/apt/lists/*
 
-# Install Firefox directly from Mozilla PPA instead of snap
-RUN add-apt-repository ppa:mozillateam/ppa -y && \
-    echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' > /etc/apt/preferences.d/mozilla-firefox && \
-    apt update && apt install -y firefox && \
+# Install Firefox
+RUN apt-get update && apt-get install -y firefox && \
     rm -rf /var/lib/apt/lists/*
 
 # Set up locale
-RUN locale-gen en_US.UTF-8
+RUN apt-get update && apt-get install -y locales && \
+    locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8 && \
+    rm -rf /var/lib/apt/lists/*
+
 ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
@@ -87,14 +82,14 @@ RUN mkdir -p /home/cursoruser/.cursor && \
 USER cursoruser
 WORKDIR /home/cursoruser
 
-# Setup custom prompt to show we're in container
+# Setup custom prompt
 RUN echo 'export PS1="\[\033[01;32m\]\u@cursor-container-mac\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ "' >> /home/cursoruser/.bashrc
 
-# Copy Cursor.AppImage with correct permissions
-COPY --chown=cursoruser:cursoruser Cursor.AppImage ./Cursor.AppImage
-RUN chmod +x Cursor.AppImage
+# Download Cursor directly during build
+RUN wget -q "https://download.cursor.sh/linux/appImage" -O Cursor.AppImage && \
+    chmod +x Cursor.AppImage
 
-# Create optimized startup script
+# Create startup script
 RUN echo '#!/bin/bash\n\
 # Ensure permissions are correct at startup\n\
 sudo chown -R cursoruser:cursoruser /home/cursoruser/.cursor\n\
@@ -102,7 +97,7 @@ sudo chown -R cursoruser:cursoruser /home/cursoruser/.config/Cursor\n\
 sudo chmod -R 755 /home/cursoruser/.cursor\n\
 sudo chmod -R 755 /home/cursoruser/.config/Cursor\n\
 \n\
-# Function to start Firefox when needed\n\
+# Start Firefox process in the background if needed\n\
 start_firefox() {\n\
   echo "Starting Firefox for authentication..."\n\
   /usr/bin/firefox --new-instance --private-window & \n\
@@ -118,6 +113,7 @@ echo "Starting Cursor..."\n\
 ENV BROWSER="/usr/bin/firefox"
 ENV ELECTRON_DEFAULT_ERROR_MODE=1
 ENV ELECTRON_ENABLE_LOGGING=1
+ENV LIBGL_ALWAYS_INDIRECT=1
 
-# Default command - use our wrapper script
+# Default command
 CMD ["/home/cursoruser/start-cursor.sh"]

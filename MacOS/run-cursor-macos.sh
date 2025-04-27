@@ -3,6 +3,12 @@
 # Create projects directory if it doesn't exist
 mkdir -p ~/cursor-projects
 
+# Check if Docker is running
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker is not running. Please start Docker Desktop and try again."
+  exit 1
+fi
+
 # Check if XQuartz is installed
 if ! command -v xquartz &> /dev/null; then
     echo "XQuartz is not installed. Please install it first:"
@@ -22,27 +28,33 @@ fi
 # Allow connections from localhost to XQuartz
 xhost +localhost
 
+# Attempt to pull the image directly to address registry issues
+echo "Pulling Ubuntu image..."
+docker pull ubuntu:22.04 || echo "Warning: Unable to pull Ubuntu image, continuing with build..."
+
 # Build the Docker image
 echo "Building Cursor container image..."
 docker build -t cursor-firefox-mac -f Dockerfile.mac .
 
-# Get current user ID
-USER_ID=$(id -u)
+# Check if build was successful
+if [ $? -ne 0 ]; then
+    echo "Build failed. Trying with alternative approach..."
+    # If the build failed, try to use a local image
+    echo "FROM ubuntu:latest" > Dockerfile.mac.alt
+    cat Dockerfile.mac | tail -n +2 >> Dockerfile.mac.alt
+    docker build -t cursor-firefox-mac -f Dockerfile.mac.alt .
+    
+    if [ $? -ne 0 ]; then
+        echo "Alternative build also failed. Please check Docker configuration."
+        exit 1
+    fi
+fi
 
-# Initialize Docker volumes with correct permissions if they don't exist
-echo "Setting up Docker volumes with correct permissions..."
+# Initialize Docker volumes
+echo "Setting up Docker volumes..."
 docker volume create cursor_app_data_mac
 docker volume create cursor_config_data_mac
 docker volume create firefox_profile_data_mac
-
-# Optional: Run a one-time permissions fix on existing volumes
-# Uncomment this section if you're having permission issues
-# docker run --rm -it \
-#   -v cursor_app_data_mac:/cursor_app_data \
-#   -v cursor_config_data_mac:/cursor_config_data \
-#   -v firefox_profile_data_mac:/firefox_profile_data \
-#   ubuntu:22.04 \
-#   /bin/bash -c "mkdir -p /cursor_app_data/extensions && chmod -R 777 /cursor_app_data && chmod -R 777 /cursor_config_data && chmod -R 777 /firefox_profile_data"
 
 # Get IP address for display forwarding
 IP=$(ifconfig en0 | grep inet | awk '$1=="inet" {print $2}')
@@ -58,6 +70,17 @@ fi
 
 echo "Using IP address: $IP for display forwarding"
 
+# Make sure XQuartz allows connections from Docker
+defaults write org.xquartz.X11 nolisten_tcp 0
+defaults write org.xquartz.X11 app_to_run /usr/bin/true
+defaults write org.xquartz.X11 enable_iglx -bool true
+
+# Restart XQuartz if needed
+killall Xquartz 2>/dev/null || true
+open -a XQuartz
+sleep 3
+xhost + $IP
+
 # Run using XQuartz display forwarding with proper volume mounts
 echo "Starting Cursor container..."
 docker run -it --rm \
@@ -70,9 +93,7 @@ docker run -it --rm \
   -v ~/cursor-projects:/home/cursoruser/projects \
   -v ~/Documents:/home/cursoruser/host-documents \
   -v ~/Downloads:/home/cursoruser/host-downloads \
-  --device /dev/fuse \
   --cap-add SYS_ADMIN \
-  --security-opt apparmor:unconfined \
   cursor-firefox-mac
 
 # Restrict access when done

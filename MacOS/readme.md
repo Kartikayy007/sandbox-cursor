@@ -1,112 +1,132 @@
 # Cursor in Docker for macOS
 
-This project allows you to run Cursor code editor inside a Docker container on macOS with proper system integration. It provides a containerized environment for Cursor with Firefox integration, allowing you to bypass Cursor's free trial limitations while maintaining a seamless development experience.
+This project allows you to run Cursor code editor inside a Docker container on macOS, bypassing trial limitations while maintaining a seamless development experience.
 
 ## Overview
 
-This project consists of:
-- A Dockerfile.mac that sets up Ubuntu with Cursor and Firefox
-- A run script specifically for macOS that properly mounts volumes and handles display forwarding via XQuartz
-- Volume management for persistent configuration
-
-Using this setup, you can work with Cursor in an isolated environment while still accessing your local files.
+This solution:
+- Uses Docker to create an isolated Linux environment running Cursor
+- Configures XQuartz for display forwarding
+- Downloads Cursor directly during the Docker build process
+- Mounts your local directories to access files
+- Persists Cursor settings with Docker volumes
 
 ## Prerequisites
 
-- Docker Desktop installed on your macOS system
-- XQuartz installed (for X11 display forwarding)
-- Basic familiarity with Docker and terminal commands
+- [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
+- [XQuartz](https://www.xquartz.org/) (for X11 display forwarding)
+- Basic familiarity with terminal commands
 - Approximately 2GB of free disk space
 
 ## Installation Instructions
 
 ### 1. Install XQuartz
 
-XQuartz is required for display forwarding from Docker to macOS:
+XQuartz is required for display forwarding:
 
 ```bash
 brew install --cask xquartz
 ```
 
-After installation, restart your computer to ensure XQuartz is properly configured.
+After installation, **restart your computer** to ensure XQuartz is properly configured.
 
-### 2. Download Cursor AppImage
+### 2. Configure XQuartz
 
-Download the latest Cursor AppImage from the official website:
+Open XQuartz, go to Preferences > Security tab and check "Allow connections from network clients"
 
-1. Visit [cursor.sh](https://cursor.sh) and download the Linux AppImage (yes, the Linux version)
-2. Place the downloaded AppImage in the same directory as the Dockerfile.mac
-3. Rename it to `Cursor.AppImage` if needed
-
-### 3. Build and run the container
-
-Make the run script executable:
+### 3. Run the Script
 
 ```bash
-chmod +x run-cursor-macos.sh
+chmod +x run-cursor-macos-fixed.sh
+./run-cursor-macos-fixed.sh
 ```
 
-Run the script:
-
-```bash
-./run-cursor-macos.sh
-```
-
-The first run will take some time as it builds the Docker image.
-
-## Usage
-
-After running the script, Cursor will open within the Docker container. Your projects will be saved to the `~/cursor-projects` directory on your host machine.
-
-The container mounts the following directories:
-- `~/cursor-projects`: Main workspace for your code
-- `~/Documents`: Accessible as `/home/cursoruser/host-documents`
-- `~/Downloads`: Accessible as `/home/cursoruser/host-downloads`
-
-Application data is stored in Docker volumes:
-- `cursor_app_data_mac`: Cursor application data
-- `cursor_config_data_mac`: Cursor configuration
-- `firefox_profile_data_mac`: Firefox profile data
+The first run will:
+1. Install XQuartz if needed
+2. Pull/build the Docker image
+3. Download Cursor directly
+4. Set up persistent volumes
+5. Launch Cursor
 
 ## Troubleshooting
 
-### Permission issues
+### 1. Registry Connection Issues
 
-If you encounter permission errors when starting Cursor, try uncommenting the permissions fix section in the `run-cursor-macos.sh` script.
-
-### Display issues
-
-If Cursor does not display:
-1. Make sure XQuartz is running
-2. Check XQuartz security settings: In XQuartz preferences, go to the Security tab and ensure "Allow connections from network clients" is checked
-3. Restart XQuartz and try again
-
-You can manually allow connections with:
+If you see errors about failing to pull the Ubuntu image:
 
 ```bash
-xhost +localhost
+docker pull ubuntu:22.04 --registry-mirror=https://registry-1.docker.io
 ```
 
-### Firefox not launching
+### 2. XQuartz Configuration
 
-Firefox is configured to launch on-demand when Cursor needs it for authentication. If Firefox doesn't start, you can manually launch it from within the container:
+Make sure XQuartz is properly configured:
 
 ```bash
-/usr/bin/firefox --new-instance
+defaults write org.xquartz.X11 nolisten_tcp 0
+defaults write org.xquartz.X11 app_to_run /usr/bin/true
+defaults write org.xquartz.X11 enable_iglx -bool true
 ```
 
-### Network issues
+Then restart XQuartz.
 
-If you encounter network issues, check that your IP address is being correctly detected in the script. You may need to modify the IP detection logic if you're using an unusual network configuration.
+### 3. Display Issues
+
+If Cursor doesn't display, check your IP configuration:
+
+```bash
+# Find your IP address
+ifconfig en0 | grep inet | awk '$1=="inet" {print $2}'
+```
+
+Edit the script to manually set this IP if auto-detection fails.
+
+### 4. Container Exiting Immediately
+
+If the container exits immediately:
+
+```bash
+# Run in debug mode
+docker run -it --rm --entrypoint /bin/bash cursor-firefox-mac
+```
+
+Then run `/home/cursoruser/start-cursor.sh` manually to see any errors.
 
 ## How It Works
 
 This solution uses:
 
-1. Docker containers for isolation
-2. XQuartz for displaying GUI applications from Docker
-3. Volume mounting for file persistence
-4. Firefox integration for authentication
-5. Named Docker volumes for application data
+1. An Ubuntu container with X11 forwarding to XQuartz
+2. Direct download of Cursor during container build
+3. Firefox for authentication
+4. Docker volumes for persistence
+5. XQuartz for displaying the GUI
 
-The Cursor AppImage runs inside the container while Firefox handles authentication. Files are saved directly to your host system through mounted volumes.
+## Advanced Configuration
+
+### Using Custom Cursor Version
+
+If you want to use a specific version of Cursor, edit the Dockerfile.mac file and change the URL in the wget command.
+
+### Manual Container Management
+
+You can manually manage the container:
+
+```bash
+# Build the image
+docker build -t cursor-firefox-mac -f Dockerfile.mac .
+
+# Run with specific options
+docker run -it --rm \
+  -e DISPLAY=YOUR_IP:0 \
+  -v cursor_app_data_mac:/home/cursoruser/.cursor \
+  cursor-firefox-mac
+```
+
+### Reset Configuration
+
+To completely reset Cursor's configuration:
+
+```bash
+docker volume rm cursor_app_data_mac cursor_config_data_mac firefox_profile_data_mac
+```
